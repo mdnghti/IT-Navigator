@@ -1,0 +1,11 @@
+@import "tailwindcss";
+
+@theme {
+  --color-accent-primary: #ff6b35;
+  --color-accent-secondary: #f7931e;
+  --color-accent-tertiary: #ffc857;
+}
+
+body {
+  @apply antialiased bg-gray-50 text-gray-900;
+}

@@ -1,0 +1,95 @@
+"""Production Docker Compose configuration."""
+
+version: "3.9"
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: always
+    env_file: .env.prod
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - career-network
+
+  redis:
+    image: redis:7-alpine
+    restart: always
+    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+    networks:
+      - career-network
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: always
+    env_file: .env.prod
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - media_data:/app/media
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 4
+    networks:
+      - career-network
+
+  celery_worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: always
+    env_file: .env.prod
+    command: celery -A app.worker.celery_app worker -Q scoring,reports --loglevel=warning --concurrency=4
+    depends_on:
+      - redis
+      - db
+    volumes:
+      - media_data:/app/media
+    networks:
+      - career-network
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    restart: always
+    env_file: .env.prod
+    depends_on:
+      - backend
+    networks:
+      - career-network
+
+  nginx:
+    image: nginx:alpine
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.prod.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+      - media_data:/var/www/media:ro
+    depends_on:
+      - backend
+      - frontend
+    networks:
+      - career-network
+
+volumes:
+  postgres_data:
+  media_data:
+
+networks:
+  career-network:
+    driver: bridge

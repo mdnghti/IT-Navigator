@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Editor - {{ test.title }}</title>
+</head>
+<body>
+    <h1>{{ test.title }}</h1>
+    <p>Test ID: {{ test.id }}</p>
+    <p>Questions count: {{ test.questions|length }}</p>
+
+    {% for question in test.questions %}
+        <div>
+            <h3>Question {{ loop.index }}: {{ question.text }}</h3>
+            <p>Answers: {{ question.answers|length }}</p>
+        </div>
+    {% endfor %}
+</body>
+</html>

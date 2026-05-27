@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Редактор тесту - {{ test.title }}</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body {
+            background-color: #f5f5f5;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        .editor-container {
+            max-width: 900px;
+            margin: 40px auto;
+            padding: 20px;
+        }
+        .test-header {
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            border-top: 8px solid #673ab7;
+        }
+        .question-card {
+            background: white;
+            border-radius: 12px;
+            padding: 25px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            transition: box-shadow 0.3s;
+        }
+        .question-card:hover {
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        }
+        .answer-item {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 15px;
+            border-left: 4px solid #673ab7;
+        }
+        .weight-slider {
+            margin: 10px 0;
+        }
+        .weight-label {
+            display: inline-block;
+            width: 40px;
+            font-weight: bold;
+            color: #673ab7;
+        }
+        .specialty-badge {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: bold;
+            margin-right: 8px;
+            margin-bottom: 8px;
+        }
+        .btn-add {
+            background: #673ab7;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+        .btn-add:hover {
+            background: #5e35b1;
+        }
+        .btn-delete {
+            color: #dc3545;
+            cursor: pointer;
+            transition: color 0.3s;
+        }
+        .btn-delete:hover {
+            color: #c82333;
+        }
+        .save-bar {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: white;
+            padding: 15px;
+            box-shadow: 0 -2px 8px rgba(0,0,0,0.1);
+            z-index: 1000;
+        }
+        .specialty-weights {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 15px;
+        }
+        .weight-control {
+            background: white;
+            padding: 10px;
+            border-radius: 6px;
+            border: 1px solid #dee2e6;
+        }
+    </style>
+</head>
+<body>
+    <div class="editor-container">
+        <!-- Test Header -->
+        <div class="test-header">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h1 class="mb-0">
+                    <i class="fas fa-clipboard-list me-2"></i>
+                    <span id="test-title">{{ test.title }}</span>
+                </h1>
+                <a href="/admin/test/list" class="btn btn-outline-secondary">
+                    <i class="fas fa-arrow-left me-2"></i>Назад
+                </a>
+            </div>
+            <div class="mb-3">
+                <label class="form-label fw-bold">Назва тесту</label>
+                <input type="text" class="form-control" id="title-input" value="{{ test.title }}">
+            </div>
+            <div class="mb-3">
+                <label class="form-label fw-bold">Опис</label>
+                <textarea class="form-control" id="description-input" rows="2">{{ test.description or '' }}</textarea>
+            </div>
+            <div class="row">
+                <div class="col-md-4">
+                    <label class="form-label fw-bold">Тип тесту</label>
+                    <select class="form-select" id="test-type-input">
+                        <option value="general" {% if test.test_type == 'general' %}selected{% endif %}>Загальний</option>
+                        <option value="specialized" {% if test.test_type == 'specialized' %}selected{% endif %}>Спеціалізований</option>
+                    </select>
+                </div>
+                <div class="col-md-4" id="test-specialty-container" style="display: {% if test.test_type == 'specialized' %}block{% else %}none{% endif %};">
+                    <label class="form-label fw-bold">Спеціальність тесту</label>
+                    <select class="form-select" id="test-specialty-input">
+                        {% for spec in specialties %}
+                        <option value="{{ spec.id }}" {% if spec.id == test.specialty_id %}selected{% endif %}>
+                            {{ spec.code }} - {{ spec.name }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label fw-bold">Активний</label>
+                    <div class="form-check form-switch mt-2">
+                        <input class="form-check-input" type="checkbox" id="is-active-input" {% if test.is_active %}checked{% endif %}>
+                        <label class="form-check-label" for="is-active-input">Тест активний</label>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Questions -->
+        <div id="questions-container">
+            {% for question in test.questions %}
+            <div class="question-card" data-question-id="{{ question.id }}">
+                <div class="d-flex justify-content-between align-items-start mb-3">
+                    <h5 class="mb-0">Питання {{ loop.index }}</h5>
+                    <button class="btn btn-sm btn-delete" onclick="deleteQuestion({{ question.id }})">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Текст питання</label>
+                    <textarea class="form-control question-text" rows="2" data-question-id="{{ question.id }}">{{ question.text }}</textarea>
+                </div>
+
+                <div class="mb-3 specialty-selector" style="display: {% if test.test_type == 'general' %}block{% else %}none{% endif %};">
+                    <label class="form-label fw-bold">Спеціальність</label>
+                    <select class="form-select question-specialty" data-question-id="{{ question.id }}">
+                        {% for spec in specialties %}
+                        <option value="{{ spec.id }}" {% if spec.id == question.specialty_id %}selected{% endif %}>
+                            {{ spec.code }} - {{ spec.name }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Варіанти відповідей</label>
+                    <div class="answers-container" data-question-id="{{ question.id }}">
+                        {% for answer in question.answers %}
+                        <div class="answer-item" data-answer-id="{{ answer.id }}">
+                            <div class="d-flex justify-content-between align-items-start mb-2">
+                                <input type="text" class="form-control answer-text" value="{{ answer.text }}" data-answer-id="{{ answer.id }}">
+                                <button class="btn btn-sm btn-delete ms-2" onclick="deleteAnswer({{ answer.id }})">
+                                    <i class="fas fa-times"></i>
+                                </button>
+                            </div>
+
+                            <div class="specialty-weights">
+                                {% for spec_code in ['F1', 'F2', 'F3', 'F4', 'F5', 'F6', 'F7'] %}
+                                <div class="weight-control">
+                                    <label class="form-label small mb-1">{{ spec_code }}</label>
+                                    <input type="range" class="form-range weight-slider"
+                                           min="0" max="10" step="1"
+                                           value="{{ answer.weights[spec_code] if spec_code in answer.weights else 0 }}"
+                                           data-answer-id="{{ answer.id }}"
+                                           data-specialty="{{ spec_code }}"
+                                           oninput="updateWeightValue(this)">
+                                    <div class="text-center">
+                                        <span class="weight-value badge bg-primary">{{ answer.weights[spec_code] if spec_code in answer.weights else 0 }}</span>
+                                    </div>
+                                </div>
+                                {% endfor %}
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    <button class="btn btn-sm btn-outline-primary mt-2" onclick="addAnswer({{ question.id }})">
+                        <i class="fas fa-plus me-1"></i>Додати відповідь
+                    </button>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+
+        <!-- Add Question Button -->
+        <div class="text-center mb-5">
+            <button class="btn btn-add btn-lg" onclick="addQuestion()">
+                <i class="fas fa-plus me-2"></i>Додати питання
+            </button>
+        </div>
+
+        <!-- Save Bar -->
+        <div class="save-bar">
+            <div class="container">
+                <div class="d-flex justify-content-between align-items-center">
+                    <span id="save-status" class="text-muted">Зміни не збережено</span>
+                    <button class="btn btn-success btn-lg" onclick="saveTest()">
+                        <i class="fas fa-save me-2"></i>Зберегти тест
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        const testId = {{ test.id }};
+        const apiBase = '/api/v1/admin/tests';
+
+        // Get auth token from cookie or session
+        function getAuthToken() {
+            // For now, we'll use session-based auth from SQLAdmin
+            return null;
+        }
+
+        function updateWeightValue(slider) {
+            const valueSpan = slider.parentElement.querySelector('.weight-value');
+            valueSpan.textContent = slider.value;
+            markAsUnsaved();
+        }
+
+        function markAsUnsaved() {
+            document.getElementById('save-status').textContent = 'Є незбережені зміни';
+            document.getElementById('save-status').classList.remove('text-success');
+            document.getElementById('save-status').classList.add('text-warning');
+        }
+
+        function markAsSaved() {
+            document.getElementById('save-status').textContent = 'Всі зміни збережено';
+            document.getElementById('save-status').classList.remove('text-warning');
+            document.getElementById('save-status').classList.add('text-success');
+        }
+
+        async function saveTest() {
+            const saveBtn = event.target;
+            saveBtn.disabled = true;
+            saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Збереження...';
+
+            try {
+                // Collect all data
+                const testData = {
+                    title: document.getElementById('title-input').value,
+                    description: document.getElementById('description-input').value,
+                    test_type: document.getElementById('test-type-input').value,
+                    is_active: document.getElementById('is-active-input').checked
+                };
+
+                // Add specialty_id for specialized tests
+                if (testData.test_type === 'specialized') {
+                    testData.specialty_id = parseInt(document.getElementById('test-specialty-input').value);
+                }
+
+                // Update test info
+                await fetch(`${apiBase}/${testId}`, {
+                    method: 'PUT',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(testData),
+                    credentials: 'include'
+                });
+
+                // Update questions and answers
+                const questions = document.querySelectorAll('.question-card');
+                const testType = document.getElementById('test-type-input').value;
+
+                for (const qCard of questions) {
+                    const qId = qCard.dataset.questionId;
+                    const qText = qCard.querySelector('.question-text').value;
+
+                    const questionData = { text: qText };
+
+                    // Only include specialty_id for general tests
+                    if (testType === 'general') {
+                        const qSpecialty = qCard.querySelector('.question-specialty').value;
+                        questionData.specialty_id = parseInt(qSpecialty);
+                    }
+
+                    await fetch(`${apiBase}/questions/${qId}`, {
+                        method: 'PUT',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify(questionData),
+                        credentials: 'include'
+                    });
+
+                    // Update answers
+                    const answers = qCard.querySelectorAll('.answer-item');
+                    for (const aItem of answers) {
+                        const aId = aItem.dataset.answerId;
+                        const aText = aItem.querySelector('.answer-text').value;
+
+                        // Collect weights
+                        const weights = {};
+                        const sliders = aItem.querySelectorAll('.weight-slider');
+                        sliders.forEach(slider => {
+                            weights[slider.dataset.specialty] = parseInt(slider.value);
+                        });
+
+                        await fetch(`${apiBase}/answers/${aId}`, {
+                            method: 'PUT',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify({
+                                text: aText,
+                                weights: weights
+                            }),
+                            credentials: 'include'
+                        });
+                    }
+                }
+
+                markAsSaved();
+                alert('Тест успішно збережено!');
+            } catch (error) {
+                console.error('Error saving test:', error);
+                alert('Помилка при збереженні тесту');
+            } finally {
+                saveBtn.disabled = false;
+                saveBtn.innerHTML = '<i class="fas fa-save me-2"></i>Зберегти тест';
+            }
+        }
+
+        async function deleteQuestion(questionId) {
+            if (!confirm('Видалити це питання?')) return;
+
+            try {
+                await fetch(`${apiBase}/questions/${questionId}`, {
+                    method: 'DELETE',
+                    credentials: 'include'
+                });
+                document.querySelector(`[data-question-id="${questionId}"]`).remove();
+                markAsUnsaved();
+            } catch (error) {
+                console.error('Error deleting question:', error);
+                alert('Помилка при видаленні питання');
+            }
+        }
+
+        async function deleteAnswer(answerId) {
+            if (!confirm('Видалити цю відповідь?')) return;
+
+            try {
+                await fetch(`${apiBase}/answers/${answerId}`, {
+                    method: 'DELETE',
+                    credentials: 'include'
+                });
+                document.querySelector(`[data-answer-id="${answerId}"]`).remove();
+                markAsUnsaved();
+            } catch (error) {
+                console.error('Error deleting answer:', error);
+                alert('Помилка при видаленні відповіді');
+            }
+        }
+
+        function addQuestion() {
+            alert('Функція додавання питань буде реалізована');
+        }
+
+        function addAnswer(questionId) {
+            alert('Функція додавання відповідей буде реалізована');
+        }
+
+        // Toggle specialty selector based on test type
+        document.getElementById('test-type-input').addEventListener('change', (e) => {
+            const isGeneral = e.target.value === 'general';
+            const isSpecialized = e.target.value === 'specialized';
+
+            // Show/hide test-level specialty for specialized tests
+            document.getElementById('test-specialty-container').style.display = isSpecialized ? 'block' : 'none';
+
+            // Show/hide question-level specialty for general tests
+            document.querySelectorAll('.specialty-selector').forEach(el => {
+                el.style.display = isGeneral ? 'block' : 'none';
+            });
+        });
+
+        // Auto-save on input
+        document.addEventListener('input', (e) => {
+            if (e.target.matches('input, textarea, select')) {
+                markAsUnsaved();
+            }
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,860 @@
+"""Custom admin pages."""
+
+from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.templating import Jinja2Templates
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+
+from app.db.models.question import Question
+from app.db.models.specialty import Specialty
+from app.db.models.test import Test
+from app.db.session import get_db
+
+router = APIRouter()
+templates = Jinja2Templates(directory="app/admin/templates")
+
+
+async def check_admin_session(request: Request):
+    """Check if user is authenticated in admin session."""
+    # SQLAdmin stores user info in session
+    if not request.session.get("user_id"):
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    return True
+
+
+@router.get("/test/create")
+async def test_create_redirect():
+    """Redirect from SQLAdmin create URL to custom editor."""
+    return RedirectResponse(url="/admin/test-create")
+
+
+@router.get("/test-editor/{test_id}", response_class=HTMLResponse)
+async def test_editor(
+    request: Request,
+    test_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    """Custom test editor page."""
+    # TODO: Add proper admin authentication check
+
+    # Get test with all questions and answers
+    stmt = (
+        select(Test)
+        .where(Test.id == test_id)
+        .options(
+            selectinload(Test.questions).selectinload(Question.answers),
+            selectinload(Test.questions).selectinload(Question.specialty),
+        )
+    )
+    result = await db.execute(stmt)
+    test = result.scalar_one_or_none()
+
+    if not test:
+        raise HTTPException(status_code=404, detail="Test not found")
+
+    # Get all specialties for dropdown
+    spec_stmt = select(Specialty).order_by(Specialty.code)
+    spec_result = await db.execute(spec_stmt)
+    specialties = spec_result.scalars().all()
+
+    # Convert everything to simple dicts
+    test_data = {
+        "id": test.id,
+        "title": test.title,
+        "description": test.description,
+        "test_type": test.test_type,
+        "is_active": test.is_active,
+        "questions": [
+            {
+                "id": q.id,
+                "text": q.text,
+                "specialty_id": q.specialty_id,
+                "order": q.order,
+                "answers": [
+                    {
+                        "id": a.id,
+                        "text": a.text,
+                        "weights": a.weights,
+                    }
+                    for a in q.answers
+                ]
+            }
+            for q in test.questions
+        ]
+    }
+
+    specialties_data = [
+        {"id": s.id, "code": s.code, "name": s.name}
+        for s in specialties
+    ]
+
+    return _render_test_editor(test_data, specialties_data, is_new=False)
+
+
+@router.get("/test-create", response_class=HTMLResponse)
+async def test_create(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """Create new test page."""
+    # TODO: Add proper admin authentication check
+
+    # Get all specialties for dropdown
+    spec_stmt = select(Specialty).order_by(Specialty.code)
+    spec_result = await db.execute(spec_stmt)
+    specialties = spec_result.scalars().all()
+
+    specialties_data = [
+        {"id": s.id, "code": s.code, "name": s.name}
+        for s in specialties
+    ]
+
+    # Empty test data
+    test_data = {
+        "id": None,
+        "title": "Новий тест",
+        "description": "",
+        "test_type": "general",
+        "is_active": True,
+        "questions": []
+    }
+
+    return _render_test_editor(test_data, specialties_data, is_new=True)
+
+
+def _render_test_editor(test_data: dict, specialties_data: list, is_new: bool = False):
+    questions_html = ""
+    for idx, q in enumerate(test_data['questions'], 1):
+        answers_html = ""
+        for a in q['answers']:
+            weights_html = ""
+            for spec_code in ['F1', 'F2', 'F3', 'F4', 'F5', 'F6', 'F7']:
+                weight_val = a['weights'].get(spec_code, 0)
+                weights_html += f"""
+                <div class="weight-control">
+                    <label>{spec_code}</label>
+                    <input type="number" class="form-control form-control-sm weight-input"
+                           min="0" max="10" step="1"
+                           value="{weight_val}"
+                           data-answer-id="{a['id']}"
+                           data-specialty="{spec_code}">
+                </div>
+                """
+
+            answers_html += f"""
+            <div class="answer-item" data-answer-id="{a['id']}">
+                <div class="d-flex justify-content-between align-items-start mb-2">
+                    <input type="text" class="form-control answer-text" value="{a['text']}" data-answer-id="{a['id']}">
+                    <button class="btn btn-sm btn-delete ms-2" onclick="deleteAnswer({a['id']})">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                <div class="specialty-weights">
+                    {weights_html}
+                </div>
+            </div>
+            """
+
+        specialty_options = ""
+        for s in specialties_data:
+            selected = "selected" if s['id'] == q['specialty_id'] else ""
+            specialty_options += f'<option value="{s["id"]}" {selected}>{s["code"]} - {s["name"]}</option>'
+
+        questions_html += f"""
+        <div class="question-card" data-question-id="{q['id']}">
+            <div class="d-flex justify-content-between align-items-start mb-3">
+                <h5 class="mb-0">Питання {idx}</h5>
+                <button class="btn btn-sm btn-delete" onclick="deleteQuestion({q['id']})">
+                    <i class="fas fa-trash"></i>
+                </button>
+            </div>
+            <div class="mb-3">
+                <label class="form-label fw-bold">Текст питання</label>
+                <textarea class="form-control question-text" rows="2" data-question-id="{q['id']}">{q['text']}</textarea>
+            </div>
+            <div class="mb-3">
+                <label class="form-label fw-bold">Спеціальність</label>
+                <select class="form-select question-specialty" data-question-id="{q['id']}">
+                    {specialty_options}
+                </select>
+            </div>
+            <div class="mb-3">
+                <label class="form-label fw-bold">Варіанти відповідей</label>
+                <div class="answers-container" data-question-id="{q['id']}">
+                    {answers_html}
+                </div>
+                <button class="btn btn-sm btn-outline-primary mt-2" onclick="addAnswer({q['id']})">
+                    <i class="fas fa-plus me-1"></i>Додати відповідь
+                </button>
+            </div>
+        </div>
+        """
+
+    html_content = f"""
+    <!DOCTYPE html>
+    <html lang="uk">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Редактор тесту - {test_data['title']}</title>
+        <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+        <style>
+            body {{
+                background-color: #fafafa;
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            }}
+            .editor-container {{
+                max-width: 800px;
+                margin: 20px auto;
+                padding: 20px;
+            }}
+            .test-header {{
+                background: white;
+                border-radius: 8px;
+                padding: 24px;
+                margin-bottom: 16px;
+                box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+                border-left: 4px solid #5e35b1;
+            }}
+            .question-card {{
+                background: white;
+                border-radius: 8px;
+                padding: 20px;
+                margin-bottom: 16px;
+                box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            }}
+            .answer-item {{
+                background: #f5f5f5;
+                border-radius: 6px;
+                padding: 12px;
+                margin-bottom: 12px;
+            }}
+            .btn-delete {{
+                color: #d32f2f;
+                background: none;
+                border: none;
+                cursor: pointer;
+                padding: 4px 8px;
+            }}
+            .btn-delete:hover {{
+                color: #b71c1c;
+            }}
+            .save-bar {{
+                position: fixed;
+                bottom: 0;
+                left: 0;
+                right: 0;
+                background: white;
+                padding: 12px;
+                box-shadow: 0 -1px 3px rgba(0,0,0,0.1);
+                z-index: 1000;
+            }}
+            .specialty-weights {{
+                display: grid;
+                grid-template-columns: repeat(7, 1fr);
+                gap: 8px;
+                margin-top: 12px;
+            }}
+            .weight-control {{
+                text-align: center;
+            }}
+            .weight-control label {{
+                display: block;
+                font-size: 11px;
+                color: #666;
+                margin-bottom: 4px;
+                font-weight: 500;
+            }}
+            .weight-input {{
+                width: 100%;
+                text-align: center;
+                font-weight: 600;
+                color: #5e35b1;
+            }}
+            .form-control-sm {{
+                padding: 4px 8px;
+                font-size: 13px;
+            }}
+            .modal {{
+                display: none;
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                background: rgba(0,0,0,0.5);
+                z-index: 2000;
+                align-items: center;
+                justify-content: center;
+            }}
+            .modal.show {{
+                display: flex;
+            }}
+            .modal-content {{
+                background: white;
+                border-radius: 12px;
+                padding: 24px;
+                max-width: 500px;
+                width: 90%;
+                max-height: 80vh;
+                overflow-y: auto;
+            }}
+            .modal-header {{
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                margin-bottom: 20px;
+            }}
+            .modal-title {{
+                font-size: 20px;
+                font-weight: 600;
+                color: #333;
+            }}
+            .modal-close {{
+                background: none;
+                border: none;
+                font-size: 24px;
+                color: #999;
+                cursor: pointer;
+                padding: 0;
+                width: 32px;
+                height: 32px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            }}
+            .modal-close:hover {{
+                color: #333;
+            }}
+            .modal-footer {{
+                display: flex;
+                gap: 12px;
+                justify-content: flex-end;
+                margin-top: 20px;
+            }}
+            .form-control, .form-select {{
+                border: 1px solid #ddd;
+                border-radius: 4px;
+            }}
+            .form-control:focus, .form-select:focus {{
+                border-color: #5e35b1;
+                box-shadow: 0 0 0 2px rgba(94,53,177,0.1);
+            }}
+            h5 {{
+                font-size: 14px;
+                font-weight: 600;
+                color: #333;
+            }}
+            .form-label {{
+                font-size: 13px;
+                font-weight: 500;
+                color: #555;
+                margin-bottom: 6px;
+            }}
+        </style>
+    </head>
+    <body>
+        <div class="editor-container">
+            <div class="test-header">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h1 class="mb-0">
+                        <i class="fas fa-clipboard-list me-2"></i>
+                        <span id="test-title">{test_data['title']}</span>
+                    </h1>
+                    <a href="/admin/test/list" class="btn btn-outline-secondary">
+                        <i class="fas fa-arrow-left me-2"></i>Назад
+                    </a>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Назва тесту</label>
+                    <input type="text" class="form-control" id="title-input" value="{test_data['title']}">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Опис</label>
+                    <textarea class="form-control" id="description-input" rows="2">{test_data.get('description', '')}</textarea>
+                </div>
+                <div class="row">
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold">Тип тесту</label>
+                        <select class="form-select" id="test-type-input">
+                            <option value="general" {'selected' if test_data['test_type'] == 'general' else ''}>Загальний</option>
+                            <option value="specialized" {'selected' if test_data['test_type'] == 'specialized' else ''}>Спеціалізований</option>
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold">Активний</label>
+                        <div class="form-check form-switch mt-2">
+                            <input class="form-check-input" type="checkbox" id="is-active-input" {'checked' if test_data['is_active'] else ''}>
+                            <label class="form-check-label" for="is-active-input">Тест активний</label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="questions-container">
+                {questions_html}
+            </div>
+
+            <div class="text-center mb-5 pb-5">
+                <button class="btn btn-primary btn-lg" onclick="addQuestion()">
+                    <i class="fas fa-plus me-2"></i>Додати питання
+                </button>
+            </div>
+
+            <div class="save-bar">
+                <div class="container">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <span id="save-status" class="text-muted">Є незбережені зміни</span>
+                        <button class="btn btn-success btn-lg" onclick="saveTest()">
+                            <i class="fas fa-save me-2"></i>Зберегти тест
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Modal for adding question -->
+        <div id="questionModal" class="modal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3 class="modal-title">Додати питання</h3>
+                    <button class="modal-close" onclick="closeModal('questionModal')">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Текст питання</label>
+                        <textarea id="newQuestionText" class="form-control" rows="3" placeholder="Введіть текст питання..."></textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Спеціальність</label>
+                        <select id="newQuestionSpecialty" class="form-select">
+                            {''.join([f'<option value="{s["id"]}">{s["code"]} - {s["name"]}</option>' for s in specialties_data])}
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" onclick="closeModal('questionModal')">Скасувати</button>
+                    <button class="btn btn-primary" onclick="confirmAddQuestion()">Додати</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Modal for adding answer -->
+        <div id="answerModal" class="modal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3 class="modal-title">Додати відповідь</h3>
+                    <button class="modal-close" onclick="closeModal('answerModal')">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Текст відповіді</label>
+                        <input type="text" id="newAnswerText" class="form-control" placeholder="Введіть текст відповіді...">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Ваги по спеціальностях (0-10)</label>
+                        <div class="row g-2">
+                            {''.join([f'''
+                            <div class="col-6 col-md-4">
+                                <label class="form-label small">{code}</label>
+                                <input type="number" id="newAnswerWeight{code}" class="form-control form-control-sm" min="0" max="10" value="0">
+                            </div>
+                            ''' for code in ['F1', 'F2', 'F3', 'F4', 'F5', 'F6', 'F7']])}
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" onclick="closeModal('answerModal')">Скасувати</button>
+                    <button class="btn btn-primary" onclick="confirmAddAnswer()">Додати</button>
+                </div>
+            </div>
+        </div>
+
+        <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+        <script>
+            let testId = {test_data['id'] if test_data['id'] else 'null'};
+            const apiBase = '/api/v1/admin/tests';
+            const isNew = {'true' if is_new else 'false'};
+            let currentQuestionIdForAnswer = null;
+
+            function openModal(modalId) {{
+                document.getElementById(modalId).classList.add('show');
+            }}
+
+            function closeModal(modalId) {{
+                document.getElementById(modalId).classList.remove('show');
+            }}
+
+            function addQuestion() {{
+                openModal('questionModal');
+            }}
+
+            function confirmAddQuestion() {{
+                const questionText = document.getElementById('newQuestionText').value.trim();
+                const specialtyId = document.getElementById('newQuestionSpecialty').value;
+
+                if (!questionText) {{
+                    alert('Введіть текст питання');
+                    return;
+                }}
+
+                closeModal('questionModal');
+
+                if (isNew || testId === null) {{
+                    addQuestionLocally(questionText, parseInt(specialtyId));
+                }} else {{
+                    fetch(`${{apiBase}}/${{testId}}/questions`, {{
+                        method: 'POST',
+                        headers: {{'Content-Type': 'application/json'}},
+                        body: JSON.stringify({{
+                            text: questionText,
+                            specialty_id: parseInt(specialtyId),
+                            order: document.querySelectorAll('.question-card').length + 1,
+                            answers: []
+                        }}),
+                        credentials: 'include'
+                    }})
+                    .then(() => {{
+                        window.location.reload();
+                    }})
+                    .catch(error => {{
+                        console.error('Error adding question:', error);
+                        alert('Помилка при додаванні питання');
+                    }});
+                }}
+
+                // Clear form
+                document.getElementById('newQuestionText').value = '';
+            }}
+
+            function addAnswer(questionId) {{
+                currentQuestionIdForAnswer = questionId;
+                openModal('answerModal');
+            }}
+
+            function addAnswerLocally(questionId) {{
+                currentQuestionIdForAnswer = questionId;
+                openModal('answerModal');
+            }}
+
+            function confirmAddAnswer() {{
+                const answerText = document.getElementById('newAnswerText').value.trim();
+                if (!answerText) {{
+                    alert('Введіть текст відповіді');
+                    return;
+                }}
+
+                const weights = {{}};
+                ['F1', 'F2', 'F3', 'F4', 'F5', 'F6', 'F7'].forEach(code => {{
+                    weights[code] = parseInt(document.getElementById('newAnswerWeight' + code).value) || 0;
+                }});
+
+                closeModal('answerModal');
+
+                const questionCard = document.querySelector(`[data-question-id="${{currentQuestionIdForAnswer}}"]`);
+                const isNewQuestion = questionCard && questionCard.dataset.isNew === 'true';
+
+                if (isNewQuestion || isNew || testId === null) {{
+                    addAnswerLocallyToQuestion(currentQuestionIdForAnswer, answerText, weights);
+                }} else {{
+                    fetch(`${{apiBase}}/questions/${{currentQuestionIdForAnswer}}/answers`, {{
+                        method: 'POST',
+                        headers: {{'Content-Type': 'application/json'}},
+                        body: JSON.stringify({{
+                            text: answerText,
+                            weights: weights,
+                            weight: 0
+                        }}),
+                        credentials: 'include'
+                    }})
+                    .then(() => {{
+                        window.location.reload();
+                    }})
+                    .catch(error => {{
+                        console.error('Error adding answer:', error);
+                        alert('Помилка при додаванні відповіді');
+                    }});
+                }}
+
+                // Clear form
+                document.getElementById('newAnswerText').value = '';
+                ['F1', 'F2', 'F3', 'F4', 'F5', 'F6', 'F7'].forEach(code => {{
+                    document.getElementById('newAnswerWeight' + code).value = '0';
+                }});
+            }}
+
+            function addAnswerLocallyToQuestion(questionId, answerText, weights) {{
+                const container = document.querySelector(`[data-question-id="${{questionId}}"] .answers-container`);
+                const tempId = 'new_' + Date.now();
+
+                let weightsHtml = '';
+                ['F1', 'F2', 'F3', 'F4', 'F5', 'F6', 'F7'].forEach(code => {{
+                    weightsHtml += `
+                        <div class="weight-control">
+                            <label>${{code}}</label>
+                            <input type="number" class="form-control form-control-sm weight-input"
+                                   min="0" max="10" step="1" value="${{weights[code]}}"
+                                   data-answer-id="${{tempId}}"
+                                   data-specialty="${{code}}">
+                        </div>
+                    `;
+                }});
+
+                const answerHtml = `
+                    <div class="answer-item" data-answer-id="${{tempId}}" data-is-new="true">
+                        <div class="d-flex justify-content-between align-items-start mb-2">
+                            <input type="text" class="form-control answer-text" value="${{answerText}}" data-answer-id="${{tempId}}">
+                            <button class="btn btn-sm btn-delete ms-2" onclick="this.closest('.answer-item').remove()">
+                                <i class="fas fa-times"></i>
+                            </button>
+                        </div>
+                        <div class="specialty-weights">
+                            ${{weightsHtml}}
+                        </div>
+                    </div>
+                `;
+                container.insertAdjacentHTML('beforeend', answerHtml);
+            }}
+
+            async function saveTest() {{
+                const saveBtn = event.target;
+                saveBtn.disabled = true;
+                saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Збереження...';
+
+                try {{
+                    const testData = {{
+                        title: document.getElementById('title-input').value,
+                        description: document.getElementById('description-input').value,
+                        test_type: document.getElementById('test-type-input').value,
+                        is_active: document.getElementById('is-active-input').checked
+                    }};
+
+                    if (isNew || testId === null) {{
+                        // Create new test
+                        const response = await fetch(`${{apiBase}}/`, {{
+                            method: 'POST',
+                            headers: {{'Content-Type': 'application/json'}},
+                            body: JSON.stringify(testData),
+                            credentials: 'include'
+                        }});
+                        const result = await response.json();
+                        testId = result.id;
+
+                        // Create questions and answers for new test
+                        const questions = document.querySelectorAll('.question-card[data-is-new="true"]');
+                        for (const qCard of questions) {{
+                            const qText = qCard.querySelector('.question-text').value;
+                            const qSpecialty = qCard.querySelector('.question-specialty').value;
+
+                            // Create question
+                            const qResponse = await fetch(`${{apiBase}}/${{testId}}/questions`, {{
+                                method: 'POST',
+                                headers: {{'Content-Type': 'application/json'}},
+                                body: JSON.stringify({{
+                                    text: qText,
+                                    specialty_id: parseInt(qSpecialty),
+                                    order: Array.from(questions).indexOf(qCard) + 1,
+                                    answers: []
+                                }}),
+                                credentials: 'include'
+                            }});
+                            const qResult = await qResponse.json();
+                            const newQuestionId = qResult.questions[qResult.questions.length - 1].id;
+
+                            // Create answers for this question
+                            const answers = qCard.querySelectorAll('.answer-item[data-is-new="true"]');
+                            for (const aItem of answers) {{
+                                const aText = aItem.querySelector('.answer-text').value;
+                                const weights = {{}};
+                                const weightInputs = aItem.querySelectorAll('.weight-input');
+                                weightInputs.forEach(input => {{
+                                    weights[input.dataset.specialty] = parseInt(input.value) || 0;
+                                }});
+
+                                await fetch(`${{apiBase}}/questions/${{newQuestionId}}/answers`, {{
+                                    method: 'POST',
+                                    headers: {{'Content-Type': 'application/json'}},
+                                    body: JSON.stringify({{
+                                        text: aText,
+                                        weights: weights,
+                                        weight: 0
+                                    }}),
+                                    credentials: 'include'
+                                }});
+                            }}
+                        }}
+
+                        alert('Тест створено! ID: ' + result.id);
+                        window.location.href = '/admin/test-editor/' + result.id;
+                        return;
+                    }}
+
+                    // Update existing test
+                    await fetch(`${{apiBase}}/${{testId}}`, {{
+                        method: 'PUT',
+                        headers: {{'Content-Type': 'application/json'}},
+                        body: JSON.stringify(testData),
+                        credentials: 'include'
+                    }});
+
+                    // Update questions and answers
+                    const questions = document.querySelectorAll('.question-card');
+                    for (const qCard of questions) {{
+                        const qId = qCard.dataset.questionId;
+                        const qText = qCard.querySelector('.question-text').value;
+                        const qSpecialty = qCard.querySelector('.question-specialty').value;
+
+                        await fetch(`${{apiBase}}/questions/${{qId}}`, {{
+                            method: 'PUT',
+                            headers: {{'Content-Type': 'application/json'}},
+                            body: JSON.stringify({{
+                                text: qText,
+                                specialty_id: parseInt(qSpecialty)
+                            }}),
+                            credentials: 'include'
+                        }});
+
+                        // Update answers
+                        const answers = qCard.querySelectorAll('.answer-item');
+                        for (const aItem of answers) {{
+                            const aId = aItem.dataset.answerId;
+                            const aText = aItem.querySelector('.answer-text').value;
+
+                            // Collect weights from inputs
+                            const weights = {{}};
+                            const weightInputs = aItem.querySelectorAll('.weight-input');
+                            weightInputs.forEach(input => {{
+                                weights[input.dataset.specialty] = parseInt(input.value) || 0;
+                            }});
+
+                            await fetch(`${{apiBase}}/answers/${{aId}}`, {{
+                                method: 'PUT',
+                                headers: {{'Content-Type': 'application/json'}},
+                                body: JSON.stringify({{
+                                    text: aText,
+                                    weights: weights
+                                }}),
+                                credentials: 'include'
+                            }});
+                        }}
+                    }}
+
+                    document.getElementById('save-status').textContent = 'Всі зміни збережено';
+                    document.getElementById('save-status').classList.remove('text-warning');
+                    document.getElementById('save-status').classList.add('text-success');
+                    alert('Тест успішно збережено!');
+                }} catch (error) {{
+                    console.error('Error saving test:', error);
+                    alert('Помилка при збереженні тесту: ' + error.message);
+                }} finally {{
+                    saveBtn.disabled = false;
+                    saveBtn.innerHTML = '<i class="fas fa-save me-2"></i>Зберегти тест';
+                }}
+            }}
+
+            async function deleteQuestion(questionId) {{
+                if (!confirm('Видалити це питання?')) return;
+                try {{
+                    await fetch(`${{apiBase}}/questions/${{questionId}}`, {{
+                        method: 'DELETE',
+                        credentials: 'include'
+                    }});
+                    document.querySelector(`[data-question-id="${{questionId}}"]`).remove();
+                }} catch (error) {{
+                    console.error('Error deleting question:', error);
+                    alert('Помилка при видаленні питання');
+                }}
+            }}
+
+            async function deleteAnswer(answerId) {{
+                if (!confirm('Видалити цю відповідь?')) return;
+                try {{
+                    await fetch(`${{apiBase}}/answers/${{answerId}}`, {{
+                        method: 'DELETE',
+                        credentials: 'include'
+                    }});
+                    document.querySelector(`[data-answer-id="${{answerId}}"]`).remove();
+                }} catch (error) {{
+                    console.error('Error deleting answer:', error);
+                    alert('Помилка при видаленні відповіді');
+                }}
+            }}
+
+            function addQuestionLocally(questionText, specialtyId) {{
+                const container = document.getElementById('questions-container');
+                const questionIndex = document.querySelectorAll('.question-card').length + 1;
+                const tempId = 'new_' + Date.now();
+
+                const questionHtml = `
+                    <div class="question-card" data-question-id="${{tempId}}" data-is-new="true">
+                        <div class="d-flex justify-content-between align-items-start mb-3">
+                            <h5 class="mb-0">Питання ${{questionIndex}}</h5>
+                            <button class="btn btn-sm btn-delete" onclick="this.closest('.question-card').remove()">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Текст питання</label>
+                            <textarea class="form-control question-text" rows="2" data-question-id="${{tempId}}">${{questionText}}</textarea>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Спеціальність</label>
+                            <input type="hidden" class="question-specialty" value="${{specialtyId}}" data-question-id="${{tempId}}">
+                            <p class="text-muted">ID: ${{specialtyId}}</p>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Варіанти відповідей</label>
+                            <div class="answers-container" data-question-id="${{tempId}}"></div>
+                            <button class="btn btn-sm btn-outline-primary mt-2" onclick="addAnswerLocally('${{tempId}}')">
+                                <i class="fas fa-plus me-1"></i>Додати відповідь
+                            </button>
+                        </div>
+                    </div>
+                `;
+                container.insertAdjacentHTML('beforeend', questionHtml);
+            }}
+
+            function addAnswerLocally(questionId) {{
+                const answerText = prompt('Введіть текст відповіді:');
+                if (!answerText) return;
+
+                const container = document.querySelector(`[data-question-id="${{questionId}}"] .answers-container`);
+                const tempId = 'new_' + Date.now();
+
+                let weightsHtml = '';
+                ['F1', 'F2', 'F3', 'F4', 'F5', 'F6', 'F7'].forEach(code => {{
+                    weightsHtml += `
+                        <div class="weight-control">
+                            <label>${{code}}</label>
+                            <input type="number" class="form-control form-control-sm weight-input"
+                                   min="0" max="10" step="1" value="0"
+                                   data-answer-id="${{tempId}}"
+                                   data-specialty="${{code}}">
+                        </div>
+                    `;
+                }});
+
+                const answerHtml = `
+                    <div class="answer-item" data-answer-id="${{tempId}}" data-is-new="true">
+                        <div class="d-flex justify-content-between align-items-start mb-2">
+                            <input type="text" class="form-control answer-text" value="${{answerText}}" data-answer-id="${{tempId}}">
+                            <button class="btn btn-sm btn-delete ms-2" onclick="this.closest('.answer-item').remove()">
+                                <i class="fas fa-times"></i>
+                            </button>
+                        </div>
+                        <div class="specialty-weights">
+                            ${{weightsHtml}}
+                        </div>
+                    </div>
+                `;
+                container.insertAdjacentHTML('beforeend', answerHtml);
+            }}
+        </script>
+    </body>
+    </html>
+    """
+
+    return HTMLResponse(content=html_content)
