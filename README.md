@@ -1,158 +1,465 @@
-# Career Platform - Профориентационная платформа
+# IT Navigator - Career Guidance Platform
 
-Полнофункциональная платформа для профориентационного тестирования с адаптивными тестами и детальной аналитикой результатов.
+[Українська версія](#ukrainian-version) | [English version](#english-version)
 
-## Архитектура
+---
 
-- **Backend**: FastAPI + PostgreSQL + SQLAlchemy (async)
-- **Admin Panel**: SQLAdmin
-- **Auth**: JWT tokens
-- **Database**: PostgreSQL 16
-- **Containerization**: Docker + Docker Compose
+<a name="english-version"></a>
+## 🇬🇧 English Version
 
-## Быстрый старт
+Full-stack career guidance platform with adaptive testing, detailed analytics, and multi-dimensional scoring system for IT specialties.
 
-### 1. Настройка
+### 🚀 Features
+
+- **Adaptive Testing**: General aptitude test + 7 specialized IT career tests
+- **Multi-dimensional Scoring**: Weighted scoring across multiple specialty dimensions
+- **User Management**: JWT authentication with secure password hashing
+- **Admin Panel**: SQLAdmin interface for content management
+- **Modern Frontend**: Next.js 14 with TypeScript, TanStack Query, and Zustand
+- **Background Tasks**: Celery for async processing (scoring, PDF generation)
+- **Responsive Design**: Dark-themed UI with Framer Motion animations
+
+### 🏗️ Architecture
+
+**Backend:**
+- FastAPI + PostgreSQL 16 + SQLAlchemy (async)
+- Celery + Redis for background tasks
+- JWT authentication
+- SQLAdmin panel
+- Alembic migrations
+
+**Frontend:**
+- Next.js 14 + TypeScript
+- TanStack Query (React Query)
+- Zustand state management
+- Tailwind CSS
+- Framer Motion
+
+**Infrastructure:**
+- Docker Compose
+- Nginx reverse proxy
+- PostgreSQL + Redis
+
+### 📦 Quick Start
+
+#### 1. Prerequisites
+
+- Docker & Docker Compose
+- Git
+
+#### 2. Clone & Setup
 
 ```bash
+git clone https://github.com/mdnghti/IT-Navigator.git
 cd IT-Navigator
 
-# Создать .env файл
+# Create backend .env file
 cp backend/.env.example backend/.env
 
-# Отредактировать backend/.env и установить SECRET_KEY
-# Можно сгенерировать: openssl rand -hex 32
+# Generate SECRET_KEY and update backend/.env
+openssl rand -hex 32
+
+# Create frontend .env file
+cp frontend/.env.example frontend/.env.local
 ```
 
-### 2. Запуск через Docker Compose
+#### 3. Launch Services
 
 ```bash
-# Запустить все сервисы
+# Start all services
 docker-compose up -d
 
-# Проверить статус
+# Check status
 docker-compose ps
 
-# Посмотреть логи
+# View logs
 docker-compose logs -f backend
 ```
 
-### 3. Инициализация базы данных
+#### 4. Initialize Database
 
 ```bash
-# Создать все данные (админ, специальности, тесты)
-# Скрипт полностью самодостаточный - все тесты захардкожены внутри
+# Create admin user, specialties, and test data
 docker-compose exec backend python -m scripts.init_db
 
-# Это создаст:
-# - Админ пользователя (admin@example.com / admin123)
-# - 7 IT-специальностей (F1-F7)
-# - Общий тест (13 вопросов)
-# - 7 специализированных тестов (по 10 вопросов каждый)
+# This creates:
+# - Admin user (admin@example.com / admin123)
+# - 7 IT specialties (F1-F7)
+# - General test (13 questions)
+# - 7 specialized tests (10 questions each)
 ```
 
-### 4. Доступ к приложению
+#### 5. Access Application
 
+- **Frontend**: http://localhost:3000
 - **Backend API**: http://localhost:8000
 - **API Docs**: http://localhost:8000/docs
 - **Admin Panel**: http://localhost:8000/admin
   - Email: `admin@example.com`
   - Password: `admin123`
 
-## Деплой на VPS
+### 🔌 API Endpoints
 
-Для деплоя на продакшн сервер смотрите подробную инструкцию в [DEPLOYMENT.md](DEPLOYMENT.md).
+#### Authentication
 
-Краткая версия:
 ```bash
-# 1. Настроить .env файлы
-# 2. Запустить сервисы
-docker compose up -d
+# Register
+POST /api/v1/auth/register
+{
+  "email": "user@example.com",
+  "password": "password123",
+  "full_name": "John Doe"
+}
 
-# 3. Инициализировать БД (все тесты уже внутри скрипта!)
+# Login (get JWT token)
+POST /api/v1/auth/login
+username=user@example.com&password=password123
+```
+
+#### Testing
+
+```bash
+# Get general test questions (shuffled)
+GET /api/v1/tests/general/questions
+Authorization: Bearer <token>
+
+# Submit general test answers
+POST /api/v1/tests/general/submit
+{
+  "answers": [
+    {"question_id": 1, "answer_id": 3}
+  ]
+}
+
+# Get specialized test questions
+GET /api/v1/tests/specialized/{specialty_code}/questions
+
+# Get user's test history
+GET /api/v1/tests/results/my
+
+# Get specific test result
+GET /api/v1/tests/results/{result_id}
+```
+
+### 🗂️ Project Structure
+
+```
+IT-Navigator/
+├── backend/
+│   ├── app/
+│   │   ├── api/v1/endpoints/    # API routes
+│   │   ├── core/                # Config, security, logging
+│   │   ├── crud/                # Database operations
+│   │   ├── db/models/           # SQLAlchemy models
+│   │   ├── schemas/             # Pydantic schemas
+│   │   ├── admin/               # SQLAdmin panel
+│   │   └── worker/              # Celery tasks
+│   ├── alembic/                 # Database migrations
+│   ├── scripts/                 # Utility scripts
+│   └── tests/                   # Pytest tests
+├── frontend/
+│   └── src/
+│       ├── app/                 # Next.js App Router
+│       ├── components/          # React components
+│       ├── lib/                 # API client
+│       ├── store/               # Zustand stores
+│       └── types/               # TypeScript types
+├── docker-compose.yml           # Development setup
+└── docker-compose.prod.yml      # Production setup
+```
+
+### 🧪 Development
+
+```bash
+# Backend tests
+cd backend
+pytest
+pytest --cov=app --cov-report=html
+
+# Backend linting
+ruff check .
+ruff format .
+mypy app
+
+# Frontend development
+cd frontend
+npm run dev
+
+# Frontend linting
+npm run lint
+```
+
+### 🚢 Production Deployment
+
+See [DEPLOYMENT.md](DEPLOYMENT.md) for detailed production deployment guide.
+
+Quick version:
+```bash
+# 1. Configure .env files for production
+# 2. Launch services
+docker compose -f docker-compose.prod.yml up -d
+
+# 3. Initialize database
 docker compose exec backend python -m scripts.init_db
-
-# Готово! Все тесты загружены автоматически.
 ```
 
-**Важно**: Скрипт `init_db.py` полностью самодостаточный и содержит все тесты внутри. Не нужны никакие внешние файлы!
+### 📊 Database Models
 
-- **API Documentation**: http://localhost:8000/docs
-- **Admin Panel**: http://localhost:8000/admin
-- **Health Check**: http://localhost:8000/health
+- **User**: Authentication and profile data
+- **Specialty**: IT career specialties (F1-F7)
+- **Test**: General and specialized tests
+- **Question**: Test questions with shuffling
+- **Answer**: Answer options with multi-dimensional weights
+- **TestResult**: User test results with JSON scores
 
-**Учётные данные админа:**
-- Email: `admin@example.com`
-- Password: `admin123`
+### 🛠️ Tech Stack
 
-## API Endpoints
+| Component | Technology |
+|-----------|-----------|
+| Backend Framework | FastAPI |
+| Database | PostgreSQL 16 |
+| ORM | SQLAlchemy (async) |
+| Task Queue | Celery + Redis |
+| Authentication | JWT |
+| Admin Panel | SQLAdmin |
+| Frontend Framework | Next.js 14 |
+| State Management | Zustand + TanStack Query |
+| Styling | Tailwind CSS |
+| Animations | Framer Motion |
+| Containerization | Docker + Docker Compose |
+| Reverse Proxy | Nginx |
 
-### Авторизация
+### 📝 License
 
-```bash
-# Регистрация
-curl -X POST http://localhost:8000/api/v1/auth/register \
-  -H "Content-Type: application/json" \
-  -d '{"email": "user@example.com", "password": "password123", "full_name": "Test User"}'
+MIT
 
-# Вход (получение токена)
-curl -X POST http://localhost:8000/api/v1/auth/login \
-  -H "Content-Type: application/x-www-form-urlencoded" \
-  -d "username=user@example.com&password=password123"
-```
+---
 
-### Тестирование
+<a name="ukrainian-version"></a>
+## 🇺🇦 Українська версія
 
-```bash
-# Получить вопросы общего теста
-curl http://localhost:8000/api/v1/tests/general/questions \
-  -H "Authorization: Bearer <token>"
+Повнофункціональна платформа для профорієнтаційного тестування з адаптивними тестами, детальною аналітикою та багатовимірною системою оцінювання для IT-спеціальностей.
 
-# Отправить ответы
-curl -X POST http://localhost:8000/api/v1/tests/general/submit \
-  -H "Authorization: Bearer <token>" \
-  -H "Content-Type: application/json" \
-  -d '{"answers": [{"question_id": 1, "answer_id": 1}]}'
+### 🚀 Можливості
 
-# Получить историю результатов
-curl http://localhost:8000/api/v1/tests/results/my \
-  -H "Authorization: Bearer <token>"
-```
+- **Адаптивне тестування**: Загальний тест здібностей + 7 спеціалізованих IT-тестів
+- **Багатовимірне оцінювання**: Зважена система балів за кількома вимірами спеціальностей
+- **Управління користувачами**: JWT-автентифікація з безпечним хешуванням паролів
+- **Адмін-панель**: SQLAdmin інтерфейс для управління контентом
+- **Сучасний фронтенд**: Next.js 14 з TypeScript, TanStack Query та Zustand
+- **Фонові завдання**: Celery для асинхронної обробки (підрахунок балів, генерація PDF)
+- **Адаптивний дизайн**: Темна тема з анімаціями Framer Motion
 
-## Roadmap
+### 🏗️ Архітектура
 
-### ✅ Блок 1 - Фундамент (Завершён)
-- Docker Compose с PostgreSQL
-- SQLAlchemy модели (User, Specialty, Test, Question, Answer, TestResult)
-- Alembic миграции
-- JWT авторизация
+**Backend:**
+- FastAPI + PostgreSQL 16 + SQLAlchemy (async)
+- Celery + Redis для фонових завдань
+- JWT автентифікація
 - SQLAdmin панель
+- Alembic міграції
 
-### ✅ Блок 2 - Ядро тестирования (Завершён)
-- API получения вопросов с перемешиванием
-- Алгоритм подсчёта баллов по специальностям
-- Сохранение результатов в БД
-- История прохождений пользователя
-
-### 🔄 Блок 3 - Фронтенд (В планах)
+**Frontend:**
 - Next.js 14 + TypeScript
-- React Query + Zustand
+- TanStack Query (React Query)
+- Zustand для стану
 - Tailwind CSS
+- Framer Motion
 
-### 🔄 Блок 4 - Фоновые задачи (В планах)
-- Redis + Celery
-- Кэширование вопросов
-- PDF отчёты
+**Інфраструктура:**
+- Docker Compose
+- Nginx reverse proxy
+- PostgreSQL + Redis
 
-### 🔄 Блок 5 - Стабилизация (В планах)
-- Pytest покрытие
-- CI/CD
-- Production config
+### 📦 Швидкий старт
 
-## Документация
+#### 1. Вимоги
 
-Подробная документация в `backend/README.md`
+- Docker & Docker Compose
+- Git
 
-## Лицензия
+#### 2. Клонування та налаштування
+
+```bash
+git clone https://github.com/mdnghti/IT-Navigator.git
+cd IT-Navigator
+
+# Створити .env файл для backend
+cp backend/.env.example backend/.env
+
+# Згенерувати SECRET_KEY та оновити backend/.env
+openssl rand -hex 32
+
+# Створити .env файл для frontend
+cp frontend/.env.example frontend/.env.local
+```
+
+#### 3. Запуск сервісів
+
+```bash
+# Запустити всі сервіси
+docker-compose up -d
+
+# Перевірити статус
+docker-compose ps
+
+# Переглянути логи
+docker-compose logs -f backend
+```
+
+#### 4. Ініціалізація бази даних
+
+```bash
+# Створити адміна, спеціальності та тестові дані
+docker-compose exec backend python -m scripts.init_db
+
+# Це створить:
+# - Адмін користувача (admin@example.com / admin123)
+# - 7 IT-спеціальностей (F1-F7)
+# - Загальний тест (13 питань)
+# - 7 спеціалізованих тестів (по 10 питань кожен)
+```
+
+#### 5. Доступ до додатку
+
+- **Frontend**: http://localhost:3000
+- **Backend API**: http://localhost:8000
+- **API Docs**: http://localhost:8000/docs
+- **Адмін-панель**: http://localhost:8000/admin
+  - Email: `admin@example.com`
+  - Пароль: `admin123`
+
+### 🔌 API Endpoints
+
+#### Автентифікація
+
+```bash
+# Реєстрація
+POST /api/v1/auth/register
+{
+  "email": "user@example.com",
+  "password": "password123",
+  "full_name": "Іван Петренко"
+}
+
+# Вхід (отримання JWT токена)
+POST /api/v1/auth/login
+username=user@example.com&password=password123
+```
+
+#### Тестування
+
+```bash
+# Отримати питання загального тесту (перемішані)
+GET /api/v1/tests/general/questions
+Authorization: Bearer <token>
+
+# Відправити відповіді загального тесту
+POST /api/v1/tests/general/submit
+{
+  "answers": [
+    {"question_id": 1, "answer_id": 3}
+  ]
+}
+
+# Отримати питання спеціалізованого тесту
+GET /api/v1/tests/specialized/{specialty_code}/questions
+
+# Отримати історію тестів користувача
+GET /api/v1/tests/results/my
+
+# Отримати конкретний результат тесту
+GET /api/v1/tests/results/{result_id}
+```
+
+### 🗂️ Структура проєкту
+
+```
+IT-Navigator/
+├── backend/
+│   ├── app/
+│   │   ├── api/v1/endpoints/    # API маршрути
+│   │   ├── core/                # Конфігурація, безпека, логування
+│   │   ├── crud/                # Операції з БД
+│   │   ├── db/models/           # SQLAlchemy моделі
+│   │   ├── schemas/             # Pydantic схеми
+│   │   ├── admin/               # SQLAdmin панель
+│   │   └── worker/              # Celery завдання
+│   ├── alembic/                 # Міграції БД
+│   ├── scripts/                 # Утилітні скрипти
+│   └── tests/                   # Pytest тести
+├── frontend/
+│   └── src/
+│       ├── app/                 # Next.js App Router
+│       ├── components/          # React компоненти
+│       ├── lib/                 # API клієнт
+│       ├── store/               # Zustand сховища
+│       └── types/               # TypeScript типи
+├── docker-compose.yml           # Development налаштування
+└── docker-compose.prod.yml      # Production налаштування
+```
+
+### 🧪 Розробка
+
+```bash
+# Backend тести
+cd backend
+pytest
+pytest --cov=app --cov-report=html
+
+# Backend лінтинг
+ruff check .
+ruff format .
+mypy app
+
+# Frontend розробка
+cd frontend
+npm run dev
+
+# Frontend лінтинг
+npm run lint
+```
+
+### 🚢 Production деплой
+
+Дивіться [DEPLOYMENT.md](DEPLOYMENT.md) для детальної інструкції з production деплою.
+
+Коротка версія:
+```bash
+# 1. Налаштувати .env файли для production
+# 2. Запустити сервіси
+docker compose -f docker-compose.prod.yml up -d
+
+# 3. Ініціалізувати базу даних
+docker compose exec backend python -m scripts.init_db
+```
+
+### 📊 Моделі бази даних
+
+- **User**: Дані автентифікації та профілю
+- **Specialty**: IT-спеціальності (F1-F7)
+- **Test**: Загальні та спеціалізовані тести
+- **Question**: Питання тестів з перемішуванням
+- **Answer**: Варіанти відповідей з багатовимірними вагами
+- **TestResult**: Результати тестів користувачів з JSON балами
+
+### 🛠️ Технологічний стек
+
+| Компонент | Технологія |
+|-----------|-----------|
+| Backend Framework | FastAPI |
+| База даних | PostgreSQL 16 |
+| ORM | SQLAlchemy (async) |
+| Черга завдань | Celery + Redis |
+| Автентифікація | JWT |
+| Адмін-панель | SQLAdmin |
+| Frontend Framework | Next.js 14 |
+| Управління станом | Zustand + TanStack Query |
+| Стилізація | Tailwind CSS |
+| Анімації | Framer Motion |
+| Контейнеризація | Docker + Docker Compose |
+| Reverse Proxy | Nginx |
+
+### 📝 Ліцензія
 
 MIT
