@@ -6,11 +6,12 @@ import { useState } from 'react'
 import { authApi } from '@/lib/api'
 import { useRouter } from 'next/navigation'
 
-export default function LoginPage() {
+export default function RegisterPage() {
   const router = useRouter()
   const [formData, setFormData] = useState({
-    username: '',
+    email: '',
     password: '',
+    full_name: '',
   })
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
@@ -21,11 +22,14 @@ export default function LoginPage() {
     setLoading(true)
 
     try {
-      const response = await authApi.login(formData.username, formData.password)
-      localStorage.setItem('access_token', response.data.access_token)
+      await authApi.register(formData.email, formData.password, formData.full_name)
+
+      const loginResponse = await authApi.login(formData.email, formData.password)
+
+      localStorage.setItem('access_token', loginResponse.data.access_token)
       router.push('/dashboard')
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'Невірний email або пароль')
+      setError(err.response?.data?.detail || 'Помилка реєстрації')
     } finally {
       setLoading(false)
     }
@@ -39,15 +43,13 @@ export default function LoginPage() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4 }}
         >
-          {/* Header */}
           <div className="text-center mb-8">
             <h1 className="text-3xl font-bold text-gray-900 mb-2">
-              Вхід
+              Створити акаунт
             </h1>
-            <p className="text-gray-600">Увійдіть у свій акаунт</p>
+            <p className="text-gray-600">Почніть свій шлях в IT</p>
           </div>
 
-          {/* Form */}
           <div className="bg-white rounded-2xl p-8 border border-gray-200 shadow-sm">
             <form onSubmit={handleSubmit} className="space-y-5">
               {error && (
@@ -58,13 +60,26 @@ export default function LoginPage() {
 
               <div>
                 <label className="block text-sm font-medium text-gray-900 mb-2">
+                  Повне ім'я
+                </label>
+                <input
+                  type="text"
+                  value={formData.full_name}
+                  onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
+                  className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-accent-primary focus:ring-1 focus:ring-accent-primary transition-colors"
+                  placeholder="Іван Іванов"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-900 mb-2">
                   Email
                 </label>
                 <input
                   type="email"
                   required
-                  value={formData.username}
-                  onChange={(e) => setFormData({ ...formData, username: e.target.value })}
+                  value={formData.email}
+                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                   className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-accent-primary focus:ring-1 focus:ring-accent-primary transition-colors"
                   placeholder="your@email.com"
                 />
@@ -80,7 +95,8 @@ export default function LoginPage() {
                   value={formData.password}
                   onChange={(e) => setFormData({ ...formData, password: e.target.value })}
                   className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-accent-primary focus:ring-1 focus:ring-accent-primary transition-colors"
-                  placeholder="Введіть пароль"
+                  placeholder="Мінімум 6 символів"
+                  minLength={6}
                 />
               </div>
 
@@ -89,21 +105,20 @@ export default function LoginPage() {
                 disabled={loading}
                 className="w-full py-3 bg-accent-primary text-white font-semibold rounded-xl hover:bg-accent-secondary transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {loading ? 'Вхід...' : 'Увійти'}
+                {loading ? 'Створення акаунта...' : 'Зареєструватися'}
               </button>
             </form>
 
             <div className="mt-6 text-center">
               <p className="text-sm text-gray-600">
-                Немає акаунта?{' '}
-                <Link href="/register" className="text-accent-primary hover:text-accent-secondary font-medium transition-colors">
-                  Зареєструватися
+                Вже є акаунт?{' '}
+                <Link href="/login" className="text-accent-primary hover:text-accent-secondary font-medium transition-colors">
+                  Увійти
                 </Link>
               </p>
             </div>
           </div>
 
-          {/* Back link */}
           <div className="text-center mt-6">
             <Link href="/" className="text-sm text-gray-600 hover:text-gray-900 transition-colors">
               ← На головну
