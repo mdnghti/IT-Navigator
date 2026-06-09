@@ -43,11 +43,7 @@ export default function SpecializedTestPage() {
 
   const submitMutation = useMutation({
     mutationFn: async () => {
-      const submissions: AnswerSubmit[] = Object.entries(answers).map(([qId, aId]) => ({
-        question_id: parseInt(qId),
-        answer_id: aId,
-      }))
-      const response = await testApi.submitSpecialized(specialtyCode, submissions)
+      const response = await testApi.submitSpecializedTest(specialtyCode, answers)
       return response.data
     },
     onSuccess: (data) => {

@@ -30,11 +30,7 @@ export default function GeneralTestPage() {
 
   const submitMutation = useMutation({
     mutationFn: async () => {
-      const submissions: AnswerSubmit[] = Object.entries(answers).map(([qId, aId]) => ({
-        question_id: parseInt(qId),
-        answer_id: aId,
-      }))
-      const response = await testApi.submitGeneral(submissions)
+      const response = await testApi.submitGeneralTest(answers)
       return response.data
     },
     onSuccess: (data) => {
