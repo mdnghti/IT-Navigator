@@ -4,7 +4,7 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-career_user}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-career_password}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-career_pass_2024}
       POSTGRES_DB: ${POSTGRES_DB:-career_platform}
     volumes:
       - postgres_data:/var/lib/postgresql/data
@@ -44,7 +44,7 @@ services:
     volumes:
       - ./backend:/app
       - media_data:/app/media
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --forwarded-allow-ips=* 
     networks:
       - career-network
 
@@ -80,16 +80,17 @@ services:
       - career-network
 
   frontend:
-    build: ./frontend
+    build:
+      context: ./frontend
+      args:
+        - NEXT_PUBLIC_API_URL=https://itnav.online/api/v1
     restart: unless-stopped
     environment:
-      - NEXT_PUBLIC_API_URL=http://localhost/api/v1
+      - NEXT_PUBLIC_API_URL=https://itnav.online/api/v1
     depends_on:
       - backend
     volumes:
-      - ./frontend:/app
       - /app/node_modules
-      - /app/.next
     networks:
       - career-network
 
@@ -98,8 +99,10 @@ services:
     restart: unless-stopped
     ports:
       - "80:80"
+      - "443:443"
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - /etc/letsencrypt:/etc/letsencrypt:ro
       - media_data:/var/www/media:ro
     depends_on:
       - backend

@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -51,3 +51,42 @@ async def get_current_active_admin(
     if not current_user.is_admin:
         raise HTTPException(status_code=403, detail="Not enough permissions")
     return current_user
+
+
+async def get_admin_user_from_session(
+    request: Request,
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> User:
+    """Get admin user from session cookie (for admin UI pages)."""
+    token = request.session.get("token")
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated",
+        )
+    
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials",
+    )
+    
+    try:
+        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+        user_id: str | None = payload.get("sub")
+        if user_id is None:
+            raise credentials_exception
+        token_data = TokenPayload(sub=user_id)
+    except JWTError:
+        raise credentials_exception
+    
+    user = await user_crud.get_by_id(db, int(token_data.sub))
+    if user is None:
+        raise credentials_exception
+    
+    if not user.is_active:
+        raise HTTPException(status_code=400, detail="Inactive user")
+    
+    if not user.is_admin:
+        raise HTTPException(status_code=403, detail="Not enough permissions")
+    
+    return user

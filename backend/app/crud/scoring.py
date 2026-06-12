@@ -22,7 +22,7 @@ async def calculate_result(
     db: AsyncSession,
     user_id: int,
     test_id: int,
-    submissions: list[AnswerSubmit],
+    submissions: dict[int, int],
 ) -> TestResultResponse:
     """
     Calculate test results based on user submissions.
@@ -65,7 +65,8 @@ async def calculate_result(
             specialty_scores[specialty.code] = 0
             specialty_max[specialty.code] = 0
 
-    for submission in submissions:
+    for question_id, answer_id in submissions.items():
+        submission = AnswerSubmit(question_id=question_id, answer_id=answer_id)
         # Get answer and question
         answer = await db.get(Answer, submission.answer_id)
         question = await db.get(Question, submission.question_id)
@@ -136,7 +137,7 @@ async def calculate_result(
     test_result = TestResult(
         user_id=user_id,
         test_id=test_id,
-        payload={"answers": [s.model_dump() for s in submissions]},
+        payload={"answers": [{"question_id": qid, "answer_id": aid} for qid, aid in submissions.items()]},
         scores={r.specialty_code: r.percentage for r in results},
     )
     db.add(test_result)
@@ -166,7 +167,7 @@ def calculate_result_sync(
     db: "Session",  # type: ignore
     user_id: int,
     test_id: int,
-    submissions: list[AnswerSubmit],
+    submissions: dict[int, int],
 ) -> TestResult:
     """
     Synchronous version of calculate_result for Celery workers.
@@ -229,7 +230,7 @@ def calculate_result_sync(
     test_result = TestResult(
         user_id=user_id,
         test_id=test_id,
-        payload={"answers": [s.model_dump() for s in submissions]},
+        payload={"answers": [{"question_id": qid, "answer_id": aid} for qid, aid in submissions.items()]},
         scores={r.specialty_code: r.percentage for r in results},
     )
     db.add(test_result)

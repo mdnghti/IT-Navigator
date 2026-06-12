@@ -30,7 +30,7 @@ class AnswerSubmit(BaseModel):
 class TestSubmitRequest(BaseModel):
     """Test submission request."""
 
-    answers: list[AnswerSubmit]
+    answers: dict[int, int]
 
 
 class SpecialtyResult(BaseModel):
